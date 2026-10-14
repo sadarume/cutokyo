@@ -6,6 +6,7 @@
 /ui/playwright-report/
 /ui/test-results/
 /crates/cutokyo-desktop/gen/
+/crates/cutokyo-desktop/WebView2/
 *.log
 __pycache__/
 *.py[cod]

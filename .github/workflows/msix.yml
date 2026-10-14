@@ -1,0 +1,88 @@
+name: MSIX candidate
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/msix.yml"
+      - "tools/release/*msix*"
+      - "crates/cutokyo-desktop/tauri.msix.conf.json"
+  workflow_dispatch:
+    inputs:
+      package_version:
+        description: "Store package version (Major.Minor.Build.0; independent of app semver)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.13"
+      - name: Test input validation and package layout
+        run: python -m unittest discover -s tools/release -p test_msix.py -v
+      - name: Parse packaging script
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "$PWD/tools/release/build-msix.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count) { throw ($errors | Out-String) }
+
+  package:
+    if: github.event_name == 'workflow_dispatch'
+    needs: validate
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22.22.3"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.25.0 --activate
+      - name: Prepare verified offline runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runtimeSource = Get-Content tools/release/msix-webview2.json -Raw | ConvertFrom-Json
+          $url = [uri]$runtimeSource.url
+          if ($url.Scheme -ne 'https' -or $url.Host -notin @('msedge.sf.dl.delivery.mp.microsoft.com', 'msedge.sf.tlu.dl.delivery.mp.microsoft.com', 'download.microsoft.com')) {
+            throw 'Use the direct Microsoft Fixed Version runtime URL.'
+          }
+          if ($runtimeSource.sha256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'Invalid runtime SHA256.' }
+          Invoke-WebRequest $url.AbsoluteUri -OutFile "$env:RUNNER_TEMP/webview2.cab"
+          if ((Get-FileHash "$env:RUNNER_TEMP/webview2.cab" -Algorithm SHA256).Hash -ne $runtimeSource.sha256) {
+            throw 'WebView2 SHA256 mismatch.'
+          }
+          $destination = "$env:RUNNER_TEMP/webview2"
+          New-Item $destination -ItemType Directory | Out-Null
+          & expand.exe '-F:*' "$env:RUNNER_TEMP/webview2.cab" $destination
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime extraction failed.' }
+          $executables = @(Get-ChildItem $destination -Recurse -Filter msedgewebview2.exe)
+          if ($executables.Count -ne 1) { throw 'Expected exactly one Fixed Version runtime.' }
+          "CUTOKYO_MSIX_RUNTIME=$($executables[0].DirectoryName)" >> $env:GITHUB_ENV
+      - name: Build unsigned MSIX candidate
+        shell: pwsh
+        env:
+          PACKAGE_VERSION: ${{ inputs.package_version }}
+        run: |
+          python tools/scripts/source-snapshot.py --root . --manifest "$env:RUNNER_TEMP/msix-source.json" -- pwsh -NoProfile -File tools/release/build-msix.ps1 -PackageVersion "$env:PACKAGE_VERSION" -WebView2Directory "$env:CUTOKYO_MSIX_RUNTIME"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cutokyo-msix-candidate-x64
+          path: |
+            target/msix/*.msix
+            target/msix/*.sha256
+            target/msix/build-report.json
+            target/msix/layout/AppxManifest.xml
+          if-no-files-found: error
