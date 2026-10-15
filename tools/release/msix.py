@@ -89,7 +89,7 @@ def manifest(identity: dict, version: str) -> str:
     <Application Id="CutokyoCli" Executable="cutokyo.exe"
       uap10:RuntimeBehavior="win32App" uap10:TrustLevel="mediumIL"
       uap10:SupportsMultipleInstances="true" uap10:Subsystem="console">
-      <uap:VisualElements DisplayName="Cutokyo CLI" AppListEntry="none"
+      <uap:VisualElements DisplayName="Cutokyo CLI"
         Description="Command line tools for Cutokyo"
         Square150x150Logo="Assets\\Square150x150Logo.png"
         Square44x44Logo="Assets\\Square44x44Logo.png" BackgroundColor="transparent" />

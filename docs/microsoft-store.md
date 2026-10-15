@@ -91,6 +91,12 @@ The package includes `cutokyo-desktop.exe` and the adjacent `cutokyo.exe` expect
 by native capture and MCP discovery. It also declares the `cutokyo.exe` execution
 alias. An existing CLI on PATH may win over that alias; test coexistence explicitly.
 
+Both application entries remain visible in Start: **Cutokyo App** and
+**Cutokyo CLI**. Do not hide the CLI with `AppListEntry="none"`: Partner Center
+rejects that entry as a headless application unless the product has a
+`HeadlessAppBypass` waiver. The visible CLI keeps its execution alias and console
+activation behavior without requiring that waiver.
+
 The manifest uses `win32App` with `mediumIL`, `runFullTrust` and
 `unvirtualizedResources`. This is not administrator elevation. These restricted
 capabilities require justification/review: Cutokyo must read user-selected local

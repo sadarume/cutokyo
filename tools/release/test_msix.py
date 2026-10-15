@@ -79,6 +79,19 @@ class MsixTests(unittest.TestCase):
         self.assertEqual({p.name for p in output.iterdir()}, {
             'cutokyo.exe', 'cutokyo-desktop.exe', 'Assets', 'WebView2', 'LICENSE.txt',
             'NOTICE.txt', 'THIRD_PARTY.md', 'AppxManifest.xml'})
+        ns = {'f': 'http://schemas.microsoft.com/appx/manifest/foundation/windows10',
+              'uap': 'http://schemas.microsoft.com/appx/manifest/uap/windows10',
+              'uap5': 'http://schemas.microsoft.com/appx/manifest/uap/windows10/5'}
+        root = ET.parse(output / 'AppxManifest.xml').getroot()
+        applications = root.findall('f:Applications/f:Application', ns)
+        self.assertEqual({app.attrib['Executable'] for app in applications},
+                         {'cutokyo.exe', 'cutokyo-desktop.exe'})
+        # Store rejects any hidden application without a HeadlessAppBypass waiver.
+        for app in applications:
+            self.assertEqual(app.find('uap:VisualElements', ns).get('AppListEntry', 'default'),
+                             'default')
+        cli = next(app for app in applications if app.attrib['Executable'] == 'cutokyo.exe')
+        self.assertEqual(cli.find('.//uap5:ExecutionAlias', ns).attrib['Alias'], 'cutokyo.exe')
         with self.assertRaises(FileExistsError):
             msix.stage(self.identity, '1.0.0.0', self.binaries, self.runtime, output)
 
